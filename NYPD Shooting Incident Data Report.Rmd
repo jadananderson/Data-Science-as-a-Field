@@ -1,0 +1,418 @@
+---
+title: "NYPD Shooting Incident Data Report"
+author: "J. Anderson"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+## Abstract
+
+This report was completed for CU Boulder's "Data Science as a Field" class. I analyzed "NYPD Shooting Incident Data (Historic) by first cleaning the data, creating some basic visualizations, further transforming the data, and then running linear regression models on variables of interest. 
+
+After a cursory exploration, I conclude that the data set supports the conclusion that a majority of the shooting incidents recorded by the NYPD in this data set were race-on-race, age-on-age incidents. This conclusion leads to a number of new questions about the social situations in which shootings, at least in NYC, most commonly occur. 
+
+## Preparation
+The following libraries will be loaded for data tidying and visualization. The libraries not discussed as part of CU Boulder's "Data Science as a Field" course are, I believe, "readr", "hms", and "patchwork". The former two are packages I will use to convert particularly tricky data types; the latter aggregates ggplots into one visualization. 
+``` {r libraries}
+library(tidyverse)
+library(readr)
+library(hms)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+The NYPD Shooting Incident Data is loaded as a .csv file into R. You can find the .csv file I used in my GitHub profile's corresponding folder.
+``` {r load data}
+data <- read.csv(
+  "/Users/jadanlynn/Documents/Data Science as a Field/NYPD_Shooting_Incident_Data__Historic_.csv")
+```
+## Tidying Data
+For this data set, the primary tidying task swill include removing unnecessary columns, renaming columns, changing data types (mostly from the character class into the factor class, although this data set also required date and boolean conversions), and the consolidation of missing data into "NA" types. 
+``` {r remove unwanted columns}
+# remove unwanted columns
+data <- data[, !names(data) %in% c("LOC_CLASSFCTN_DESC",
+                                   "LOCATION_DESC",
+                                   "Latitude", "Longitude",
+                                   "XCOORD", "YCOORD", "Lon_Lat")]
+```
+
+``` {r rename columns}
+# rename columns
+data <- data %>%
+  dplyr::rename(KEY = INCIDENT_KEY, DATE = OCCUR_DATE, TIME = OCCUR_TIME,
+                IN_OUT = LOC_OF_OCCUR_DESC, JURIS = JURISDICTION_CODE,
+                MURDER = STATISTICAL_MURDER_FLAG, P_AGE = PERP_AGE_GROUP,
+                P_SEX = PERP_SEX, P_RACE = PERP_RACE, V_AGE = VIC_AGE_GROUP,
+                V_SEX = VIC_SEX, V_RACE = VIC_RACE, XCOORD = X_COORD_CD,
+                YCOORD = Y_COORD_CD)
+
+names(data)
+```
+
+``` {r change data types}
+# data type conversion
+data <- data %>%
+  mutate(
+    DATE = as.Date(DATE, format = "%m/%d/%Y"),
+    TIME = hms::as_hms(TIME),
+    BORO = as.factor(BORO),
+    IN_OUT = as.factor(IN_OUT),
+    PRECINCT = as.factor(PRECINCT),
+    JURIS = as.factor(JURIS),
+    MURDER = case_when(
+      MURDER == "true" ~ TRUE,
+      MURDER == "false" ~ FALSE),
+    P_AGE = as.factor(P_AGE),
+    P_SEX = as.factor(P_SEX),
+    P_RACE = as.factor(P_RACE),
+    V_AGE = as.factor(V_AGE),
+    V_SEX = as.factor(V_SEX),
+    V_RACE = as.factor(V_RACE)
+    )
+
+summary(data)
+```
+
+``` {r consolidate missing data as NAs}
+# consolidation of missing data
+data$IN_OUT[data$IN_OUT == ""] <- NA
+data$P_AGE[data$P_AGE == ""] <- NA
+data$P_AGE[data$P_AGE == "(null)"] <- NA
+data$P_AGE[data$P_AGE == "UNKNOWN"] <- NA
+data$P_AGE[data$P_AGE == "1020"] <- NA
+data$P_AGE[data$P_AGE == "1028"] <- NA
+data$P_AGE[data$P_AGE == "224"] <- NA
+data$P_AGE[data$P_AGE == "940"] <- NA
+data$P_SEX[data$P_SEX == ""] <- NA
+data$P_SEX[data$P_SEX == "(null)"] <- NA
+data$P_SEX[data$P_SEX == "U"] <- NA
+data$P_RACE[data$P_RACE == ""] <- NA
+data$P_RACE[data$P_RACE == "(null)"] <- NA
+data$P_RACE[data$P_RACE == "UNKNOWN"] <- NA
+data$V_AGE[data$V_AGE == "1022"] <- NA
+data$V_AGE[data$V_AGE == "UNKNOWN"] <- NA
+data$V_SEX[data$V_SEX == "U"] <- NA
+data$V_RACE[data$V_RACE == "UNKNOWN"] <- NA
+```
+
+``` {r remove factors with 0 observations}
+# removing factor values with 0 observations
+data <- data %>%
+  mutate(
+    IN_OUT = droplevels(IN_OUT),
+    P_SEX = droplevels(P_SEX),
+    V_AGE = droplevels(V_AGE),
+    V_SEX = droplevels(V_SEX),
+    P_RACE = droplevels(P_RACE),
+    P_AGE = droplevels(P_AGE)
+    )
+
+summary(data)
+```
+## Exploration via Visualization
+Exploration will begin by creating and analyzing basic plots of two key variables: perpetrator race and age group.
+``` {r Perp Race Plot}
+perp_race_plot <- data %>%
+  drop_na(P_RACE) %>%
+  ggplot(mapping = aes(x = P_RACE, fill = P_RACE)) +
+  geom_bar(stat = "count") +
+  labs(
+    x = "Perpetrator Race",
+    y = "Number of Shooting Incidents",
+    colour = "Perpetrator Race",
+    title = "Number of Shooting Incidents by Perpetrator Race",
+    fill = "Perpetrator Race") +
+  theme(axis.text.x = element_text(angle = -45, vjust = 0.5, hjust = 0.1))
+
+perp_race_plot
+```
+
+``` {r Perp Age Graph}
+perp_age_graph <- data %>%
+  drop_na(P_AGE) %>%
+  ggplot(mapping = aes(x = P_AGE, fill = P_AGE)) +
+  geom_bar(stat = "count") +
+  labs(
+    x = "Perpetrator Age Group",
+    y = "Number of Shooting Incidents",
+    title = "Number of Shooting Incidents by Perpetrator Age Group",
+    fill = "Perpetrator Age Group")
+
+perp_age_graph
+```
+From these basic visualizations we can easily see that, based off of our sampling of *known* data, majority of the shooting incident perpetrators are Black and between the ages of 18 and 44.
+
+Now the visualizations will track these two metrics—perpetrator race and age group—over time.
+``` {r Perp Race Across Time}
+perp_race_time <- data %>%
+  drop_na(P_RACE) %>%
+  ggplot(aes(x = DATE, fill = P_RACE)) +
+  geom_histogram(bins = 17) +
+  labs(
+    x = "Time",
+    y = "Number of Shootings",
+    title = "Perpetrator Race Across Time",
+    fill = "Perpetrator Race"
+    )
+
+perp_race_time
+```
+From an examination of the chart above, it does not seem like the racial composition of shooting perpetrators have changed over time.
+``` {r Perp Age Group Across Time}
+perp_age_time <- data %>%
+  drop_na(P_AGE) %>%
+  ggplot(aes(x = DATE, fill = P_AGE)) +
+  geom_histogram(bins = 17) +
+  labs(
+    x = "Years",
+    y = "Number of Shootings",
+    title = "Perpetrator Age Group Across Time",
+    fill = "Perpetrator Age Group"
+    )
+
+perp_age_time
+```
+A careful look at perpetrator age group across time suggests that the ages of shooting incident perpetrators *have* changed over time. Specifically, whereas majority of perpetrators were from the 18-24 age group from 2006 to 2015, afterward it seems that the number of shooters from the 25-44 age group increased to equal, if not eclipse, the number of shooters from the 18-24 age group.
+
+This visual analysis will be verified by creating simpler graphs of the changes in number of perpetrators from individual age groups over time.
+``` {r 18 over time}
+less_18_change <- data %>%
+  drop_na(P_AGE) %>%
+  ggplot(filter(data, P_AGE == "<18"),
+         mapping = aes(x = DATE)) +
+  geom_bar(stat = "count", width = 100, show.legend = FALSE, fill = "pink") +
+  labs(
+    x = "Year",
+    y = "Number of Shootings",
+    title = "Change in Age Group: <18 Perpetrators Across Time",
+    )
+
+# less_18_change
+```
+``` {r 18-24 over time}
+change_18_24 <- ggplot(data = filter(data, P_AGE == "18-24"),
+                       mapping = aes(x = DATE)) +
+  geom_bar(stat = "count", width = 100, show.legend = FALSE, fill = "darkgreen") +
+  labs(
+    x = "Year",
+    y = "Number of Shootings",
+    title = "Change in Age Group: 18-24 Perpetrators Across Time"
+    )
+
+```
+
+``` {r 25-44 over time}
+change_25_44 <- ggplot(data = filter(data, P_AGE == "25-44"),
+                       mapping = aes(x = DATE)) +
+  geom_bar(stat = "count", width = 100, show.legend = FALSE, fill = "turquoise") +
+  labs(
+    x = "Year",
+    y = "Number of Shootings",
+    title = "Change in Age Group: 25-44 Perpetrators Across Time"
+    )
+```
+
+``` {r 45-64 over time}
+change_45_64 <- ggplot(data = filter(data, P_AGE == "45-64"),
+                       mapping = aes(x = DATE)) +
+  geom_bar(stat = "count", width = 100, show.legend = FALSE, fill = "lightblue") +
+  labs(
+    x = "Year",
+    y = "Number of Shootings",
+    title = "Change in Age Group: 45-64 Perpetrators Across Time")
+```
+
+``` {r 65+ over time, fig.width = 40, fig.height = 60}
+change_65 <- ggplot(data = filter(data, P_AGE == "65+"),
+                    mapping = aes(x = DATE)) +
+  geom_bar(stat = "count", width = 100, fill = "purple", show.legend = FALSE) +
+  labs(
+    x = "Year",
+    y = "Number of Shootings",
+    title = "Change in Age Group: 65+ Perpetrators Across Time"
+    )
+
+less_18_change/change_18_24/change_25_44/change_45_64/change_65
+```
+
+It is difficult to see trends with the individual age group bar graphs. Instead, here is a grouped histogram of all perpetrator age groups over time.
+``` {r perp age over time grouped chart}
+age_over_time_grouped <- data %>%
+  drop_na(P_AGE) %>%
+  ggplot(aes(x = DATE, fill = P_AGE)) +
+  geom_histogram(position = "dodge", bins = 18) +
+  scale_x_date(breaks = seq(min(data$DATE), max(data$DATE), length = 5),
+               date_labels = "%Y") +
+  labs(
+    x = "Year",
+    y = "Number of Shootings",
+    title = "Changes in Age Group of Perpetrators Over Time",
+    fill = "Perpetrator Age Group"
+    )
+
+age_over_time_grouped
+```
+The "Changes in Age Group of Perpetrators Over Time" graph better displays the following trends:
+
+1. The number of perpetrators from age group "65+" stays constant over time
+2. The number of perpetrators from age group "45-64" slightly increases over time
+3. The number of perpetrators from age group "25-44" increases over time
+4. The number of perpetrators from age group "18-24" decreases over time
+5. The number of perpetrators from age group "<18" stays constant over time
+
+Consider victim age groups over time:
+``` {r victim age over time grouped chart}
+victim_age_over_time <- data %>%
+  drop_na(V_AGE) %>%
+  ggplot(aes(x = DATE, fill = V_AGE)) +
+  geom_histogram(position = "dodge", bins = 18) +
+  scale_x_date(breaks = seq(min(data$DATE), max(data$DATE), length = 5),
+               date_labels = "%Y") +
+  labs(
+    x = "Year",
+    y = "Number of Shootings",
+    title = "Changes in Age Group of Victims Over Time",
+    fill = "Victim Age Group"
+    )
+
+victim_age_over_time
+```
+The "Changes in Age Group of Victims Over Time" graph displays the following trends:
+
+1. The number of perpetrators from age group "65+" stays constant over time
+2. The number of perpetrators from age group "45-64" stays constant over time
+3. The number of perpetrators from age group "25-44" increases over time
+4. The number of perpetrators from age group "18-24" decreases over time
+5. The number of perpetrators from age group "<18" decreases over time
+
+## Analyzing
+Seeing as how the racial breakdown of perpetrators and victims stays constant over time, and seeing the trend that the number of both "25-44" perpetrators and victims increases over time, lends to a hypothesis that gun violence from perpetrator to victim is often race on race, age on age.
+``` {r race on race}
+race_on_race <- data %>%
+  drop_na(V_RACE) %>%
+  drop_na(P_RACE) %>%
+  ggplot(aes(x = P_RACE, fill = V_RACE)) +
+  geom_bar(position = "dodge") +
+  labs(
+    x = "Perpetrator Race",
+    y = "Number of Shootings",
+    title = "Race on Race Violence",
+    fill = "Victim Race"
+    ) +
+  theme(axis.text.x = element_text(angle = -45, size = 7))
+
+race_on_race
+```
+Two trends can be derived from the graph above. The first is the overwhelmingly the victims of Black perpetrators are Black. In fact, Black victims are the majority for Black, Black Hispanic, and White Hispanic perpetrators. The second is that the majority of White perpetrators' victims are also White.
+``` {r age on age}
+age_on_age <- data %>%
+  drop_na(P_AGE) %>%
+  ggplot(aes(x = P_AGE, fill = V_AGE)) +
+  geom_bar(position = "dodge") +
+  labs(
+    x = "Perpetrator Age",
+    y = "Number of Shootings",
+    title = "Age on Age Violence",
+    fill = "Victim Age Group"
+    )
+
+age_on_age
+```
+From this graph the following trends can be derived:
+
+1. For perpetrators between the ages of 18-24, majority of their victims are also ages 18-24
+2. For perpetrators between the ages of 18-24, victims between 25-44 constitute the secondary majority
+3. For perpetrators between the ages of 25-44, majority of their victims are also ages 25-44
+4. For perpetrators between the ages of 25-44, victims between 18-24 constitute the secondary majority
+5. For perpetrators below the age of 18, the primary and secondary majorities are age groups "18-24" and "<18", respectively
+6. For perpetrators between the ages of 18-44, the primary and secondary majorities are some combination of age groups "18-24" and "24-44"
+7. For perpetrators above 44, the primary and secondary majorities are age groups "25-44" and "45-64", respectively
+
+## Data Modeling
+Multiple linear regression models will be used to verify the trends derived from the two graphs above.
+``` {r one-hot encode p_race}
+data <- data %>%
+  mutate(
+    P_RACE_NATIVE = ifelse(P_RACE == "AMERICAN INDIAN/ALASKAN NATIVE", 1, 0),
+    P_RACE_API = ifelse(P_RACE == "ASIAN / PACIFIC ISLANDER", 1, 0),
+    P_RACE_BLACK = ifelse(P_RACE == "BLACK", 1, 0),
+    P_RACE_BLACKHIS = ifelse(P_RACE == "BLACK HISPANIC", 1, 0),
+    P_RACE_WHITE = ifelse(P_RACE == "WHITE", 1, 0),
+    P_RACE_WHITEHIS = ifelse(P_RACE == "WHITE HISPANIC", 1, 0)
+    )
+```
+
+``` {r race multiple linear regression}
+race_model_v_black <- lm(V_RACE == "BLACK" ~ P_RACE_BLACK + P_RACE_NATIVE + P_RACE_API +
+                           P_RACE_BLACKHIS + P_RACE_WHITE + P_RACE_WHITEHIS, data = data)
+race_model_v_white <- lm(V_RACE == "WHITE" ~ P_RACE_BLACK + P_RACE_NATIVE + P_RACE_API +
+                           P_RACE_BLACKHIS + P_RACE_WHITE + P_RACE_WHITEHIS, data = data)
+race_model_v_api <- lm(V_RACE == "ASIAN / PACIFIC ISLANDER" ~ P_RACE_BLACK + P_RACE_NATIVE
+                       + P_RACE_API + P_RACE_BLACKHIS + P_RACE_WHITE + P_RACE_WHITEHIS,
+                       data = data)
+race_model_v_native <- lm(V_RACE == "AMERICAN INDIAN/ALASKAN NATIVE" ~ P_RACE_BLACK +
+                            P_RACE_NATIVE + P_RACE_API +
+                            P_RACE_BLACKHIS + P_RACE_WHITE + P_RACE_WHITEHIS, data = data)
+race_model_v_blackhis <- lm(V_RACE == "BLACK HISPANIC" ~ P_RACE_BLACK + P_RACE_NATIVE +
+                              P_RACE_API + P_RACE_BLACKHIS + P_RACE_WHITE +
+                              P_RACE_WHITEHIS, data = data)
+race_model_v_whitehis <- lm(V_RACE == "WHITE HISPANIC" ~ P_RACE_BLACK + P_RACE_NATIVE +
+                              P_RACE_API + P_RACE_BLACKHIS + P_RACE_WHITE +
+                              P_RACE_WHITEHIS, data = data)
+
+summary(race_model_v_black) # [1] Black [2] White [3] White Hispanic
+summary(race_model_v_white) # [1] White [2] Asian/Pacific Islander [3] White Hispanic
+summary(race_model_v_api) # [1] Asian/Pacific Islander [2] White
+summary(race_model_v_native) # No Significant Results
+summary(race_model_v_blackhis) # [1] Black [2] White [3] White Hispanic
+summary(race_model_v_whitehis) # [1] Black [2] White Hispanic [3] White
+```
+From the race models above, the following results are derived at statistically significant levels:
+
+1. In order of t-value, Black victims predict Black, White, and White Hispanic perpetrators
+2. In order of t-value, White victims predict White, Asian/Pacific Islander, and White Hispanic perpetrators
+3. In order of t-value, Asian/Pacific Islander victims predict Asian/Pacific Islander and White perpetrators
+4. In order of t-value, Black Hispanic victims predict Black, White, and White Hispanic perpetrators
+5. In order of t-value, White Hispanic victims predict Black, White Hispanic, and White perpetrators
+
+``` {r one-hot encode age}
+data <- data %>%
+  mutate(
+    P_AGE_18 = ifelse(P_AGE == "<18", 1, 0),
+    P_AGE_18_24 = ifelse(P_AGE == "18-24", 1, 0),
+    P_AGE_25_44 = ifelse(P_AGE == "25-44", 1, 0),
+    P_AGE_45_64 = ifelse(P_AGE == "45-64", 1, 0),
+    P_AGE_65 = ifelse(P_AGE == "65+", 1, 0),
+    )
+```
+
+``` {r age multiple linear regression}
+age_model_18 <- lm(V_AGE == "<18" ~ P_AGE_18 + P_AGE_18_24 + P_AGE_25_44 +
+                     P_AGE_45_64 + P_AGE_65, data = data)
+age_model_18_24 <- lm(V_AGE == "18-24" ~ P_AGE_18 + P_AGE_18_24 + P_AGE_25_44 +
+                        P_AGE_45_64 + P_AGE_65, data = data)
+age_model_25_44 <- lm(V_AGE == "25-44" ~ P_AGE_18 + P_AGE_18_24 + P_AGE_25_44 +
+                        P_AGE_45_64 + P_AGE_65, data = data)
+age_model_45_64 <- lm(V_AGE == "45-64" ~ P_AGE_18 + P_AGE_18_24 + P_AGE_25_44 +
+                        P_AGE_45_64 + P_AGE_65, data = data)
+age_model_65 <- lm(V_AGE == "65+" ~ P_AGE_18 + P_AGE_18_24 + P_AGE_25_44 +
+                     P_AGE_45_64 + P_AGE_65, data = data)
+
+summary(age_model_18) # [1] <18 [2] 18-24
+summary(age_model_18_24) # [1] 18-24 [2] <18 [3] 24-44
+summary(age_model_25_44) # [1] 25-44 [2] <18
+summary(age_model_45_64) # [1] <18 [2] 18-24 [3] 25-44
+summary(age_model_65) # [1] 18-24 [2] 25-44 [3] <18
+```
+From the age models above the following results are derived at statistically significant levels:
+
+1. In order of t-value, victims below age 18 predict "<18" and "18-24" perpetrators
+2. In order of t-value, victims between 18-24 predict "18-24", "<18" and "24-44" perpetrators
+3. In order of t-value, victims between 25-44 predict "25-44" and "<18" perpetrators
+4. In order of t-value, victims between 45-64 predict "<18", "18-24" and "25-44" perpetrators
+5. In order of t-value, victims older than 65 predict "18-24", "25-44" and "<18" perpetrators
+
+## Conclusion
+There is evidence that majority of the shooting incidents captured in this report's data are race-on-race, age-on-age violence. Specifically, the data suggests that Black people shoot Black victims; White shooters shoot White victims; perpetrators from the ages 18-24 shoot 18-24 year olds; and perpetrators ages 25-44 shoot 25-44 year olds. The main implication to draw from race-on-race, age-on-age violence is that these shootings are not random, but likely violence between family members, acquaintances, and neighbors.
+
+Points of entry for biases in this analysis start right at data clean up. One important prevention measure I took to avoid biases in my analysis is choosing to change all unknown values into NA-types, instead of imputing numbers based on inferred distributions. And yet, bias makes its way into a data set from the outset: the questions that I had to ask of the data, informed by preconceived notions about crime and shooting in New York City, impacted the data I counted as important. The absence of data will no doubt affect the kinds of results I can draw from the data set. The best way for me to avoid drawing biased conclusions from this data is gathering others' conclusions from the same data set.
